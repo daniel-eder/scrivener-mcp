@@ -117,6 +117,40 @@ To edit:
 
 Changes are written immediately to the Scrivener project file. Scrivener will see them the next time it reloads or syncs the project.
 
+### Creating and populating documents
+
+The standard workflow for adding new content is a two-step process: create the document, then write to it.
+
+> "Create a new chapter under Part 1 called 'The Crossing'"
+
+Claude calls `create_document` and gets back a document ID. Then:
+
+> "Write this opening to 'The Crossing': The ferry left at dawn..."
+
+Claude calls `write_document` with the ID and your text. The `content` parameter on `create_document` exists but `write_document` gives you full control over fidelity and is the reliable way to set content.
+
+**Folders vs text documents:** `create_document` with `documentType: "Folder"` creates a container. The `content` parameter is ignored for folders — they hold other documents, not text.
+
+**Snapshots:** When `write_document` modifies a document that already has content, it automatically takes a Scrivener snapshot first. This is normal behaviour — it gives you a native rollback point in Scrivener's Snapshots browser. The tool response will tell you if a snapshot was taken and what formatting, if any, could not be preserved.
+
+### The project lifecycle
+
+A project stays open for the duration of your conversation. You don't need to reopen it between tool calls. When you're done:
+
+> "Close the project"
+
+This flushes all pending writes to disk and releases file handles. After closing, you must call `open_project` again before any further work — all document tools will return "No project is currently open" until you do.
+
+To switch to a different project, just open it — opening a new project automatically closes the previous one (with writes flushed).
+
+### Platform notes
+
+**Windows paths** work natively with either forward slashes or backslashes:
+
+> "Open C:\Users\me\Documents\MyNovel.scriv"
+
+**macOS project detection:** On macOS, `detect_open_project` can find the project you have open in Scrivener without you providing a path. On Windows, always provide the path directly or use `discover_projects` to scan common locations.
+
 ### Synopses and notes
 
 Every document in Scrivener has a synopsis (the index card text) and notes. You can read and write both:

@@ -168,11 +168,12 @@ export const readDocumentHandler: ToolDefinition = {
 	name: 'read_document',
 	title: 'Read Document',
 	description:
-		'Read the text of a single document. By default returns plain text; set format to "formatted" ' +
-		'to get rich text with styling and structure preserved. Use offset and limit to page through ' +
-		'long documents by word range instead of returning the whole thing. Use get_document_info ' +
-		'when you only need metadata, or search/semantic_search to find content across many documents. ' +
-		'Requires an open project and a valid document id.',
+		'Read the text of a single document. By default returns plain text (best for editing and ' +
+		'search); set format to "formatted" to get rich text with styling and structure preserved ' +
+		'(best for display). Use offset and limit to page through long documents by word range ' +
+		'instead of returning the whole thing. Use get_document_info when you only need metadata, ' +
+		'or search/semantic_search to find content across many documents. Requires an open project ' +
+		'and a valid document id.',
 	annotations: {
 		readOnlyHint: true,
 		destructiveHint: false,
@@ -281,8 +282,9 @@ export const writeDocumentHandler: ToolDefinition = {
 		"Replace a document's text with new content, preserving the surrounding Scrivener formatting " +
 		'the edit did not touch (stylesheet, styles, images, footnotes) byte-for-byte. The result ' +
 		'reports whether formatting was fully preserved; when an edit would drop non-round-trippable ' +
-		'content it takes a Scrivener snapshot first (restorable in Scrivener) and says so. To change ' +
-		'only the ' +
+		'content it takes a Scrivener snapshot first (restorable in Scrivener) and says so. A snapshot ' +
+		'is always taken before writing to a document that already has content — this is normal ' +
+		'behaviour, not an error. Content is written to disk immediately. To change only the ' +
 		'title or metadata use update_document; to add a new document use create_document. Requires an ' +
 		'open project and a valid document id.',
 	annotations: {
@@ -380,8 +382,9 @@ export const createDocumentHandler: ToolDefinition = {
 	description:
 		'Create a new text document or folder in the binder and return its new id. Optionally set the ' +
 		'initial body content and the parent folder; if no parent is given the item is added at the ' +
-		'top level. Each call creates a distinct item (not idempotent). Use write_document to change ' +
-		'content afterward. Requires an open project.',
+		'top level. Each call creates a distinct item (not idempotent). For reliable content, always ' +
+		'follow up with write_document after creating a text document. The content param is ignored ' +
+		'for folders. Requires an open project.',
 	annotations: {
 		readOnlyHint: false,
 		destructiveHint: false,

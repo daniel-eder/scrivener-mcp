@@ -46,6 +46,11 @@ document write**, so Scrivener does not flag our edits as externally modified.
 > scrivener-mcp**, not by Scrivener. It is this server's SQLite cache and is not
 > part of the Scrivener format.
 
+**Project creation:** Projects should be created by Scrivener itself (File → New
+Project). The MCP can open, read, write, and close existing projects but does not
+create new ones from scratch — Scrivener sets up the `Settings/` directory and
+other internal state that the MCP depends on.
+
 ## The `.scrivx` manifest
 
 Parsed with `xml2js` (`explicitArray: false, mergeAttrs: true`), so XML

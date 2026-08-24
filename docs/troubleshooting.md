@@ -204,6 +204,18 @@ Changes are written to disk immediately by `write_document` -- this is a Scriven
 
 The server writes changes to disk immediately when you use `write_document` or `update_document`. If you want to be certain, ask Claude to "save the project" which explicitly flushes all pending changes.
 
+## Document content appears empty after writing
+
+The standard workflow for adding content is two steps: `create_document` then `write_document`. If you only called `create_document` with a `content` param and the document appears empty in Scrivener, follow up with `write_document` to set the content reliably.
+
+If you called `write_document` and the document is still empty in Scrivener, close and reopen the project in Scrivener — it caches document content in memory and may not reload from disk until you navigate away and back or reopen.
+
+## "No project is currently open"
+
+You called a document tool but no project is open. This happens after `close_project` or at the start of a session. Fix: call `open_project` with the path to your `.scriv` folder.
+
+Opening a different project also closes the current one — all writes are flushed first, so no data is lost.
+
 ## Getting more help
 
 - Set `LOG_LEVEL=DEBUG` for verbose output (logs go to stderr, visible in your terminal)

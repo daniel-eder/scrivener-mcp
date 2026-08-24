@@ -32,7 +32,8 @@ export const openProjectHandler: ToolDefinition = {
 		'structure, search, and analysis tool operates on the project opened here, so call this first. ' +
 		'Accepts the path to a .scriv folder or the .scrivx file inside it and resolves the project ' +
 		'automatically. Returns the project title, author, and metadata. Opening a project closes any ' +
-		'project already open. If you do not know the path, call discover_projects first.',
+		'project already open (all pending writes are flushed first). If you do not know the path, ' +
+		'call discover_projects first.',
 	annotations: {
 		readOnlyHint: false,
 		destructiveHint: false,
@@ -332,8 +333,9 @@ export const closeProjectHandler: ToolDefinition = {
 	description:
 		'Close the currently open project, flush any pending memory/auto-save state, and clear the ' +
 		'active session. After this, document and analysis tools have no project to act on until ' +
-		'open_project is called again. Use this to switch projects cleanly or release file handles ' +
-		'at the end of a session. Requires an open project. Takes no parameters.',
+		'open_project is called again — you must call open_project before any further work. All ' +
+		'pending writes are flushed to disk before closing. Use this to switch projects cleanly or ' +
+		'release file handles at the end of a session. Requires an open project. Takes no parameters.',
 	annotations: {
 		readOnlyHint: false,
 		destructiveHint: false,
@@ -474,9 +476,9 @@ export const detectOpenProjectHandler: ToolDefinition = {
 		'you can act on it without asking for a path. Use this when the user says "my project", "the ' +
 		'project I have open", or gives a command with no project specified. Reads the open window ' +
 		'names from the running app and resolves them to .scriv paths on disk; it does not open ' +
-		'anything. If exactly one project is open, pass its path to open_project. macOS only right ' +
-		'now (returns supported=false elsewhere; fall back to discover_projects). The first use may ' +
-		'prompt macOS to allow the client app to control Scrivener.',
+		'anything. If exactly one project is open, pass its path to open_project. macOS only — on ' +
+		'Windows, always use discover_projects or provide the path directly to open_project. The ' +
+		'first use may prompt macOS to allow the client app to control Scrivener.',
 	annotations: {
 		readOnlyHint: true,
 		destructiveHint: false,
