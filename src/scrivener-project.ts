@@ -406,7 +406,7 @@ export class ScrivenerProject {
 		const context: DocumentOperationContext = {
 			projectStructure: this.documentManager.getProjectStructureData(),
 			projectPath: this.projectPath,
-			writeDocument: (id, content) => this.documentManager.writeDocument(id, content),
+			writeDocument: (id, content) => this.documentManager.writeDocument(id, content, true),
 			saveProject: () => this.saveProject(),
 		};
 
