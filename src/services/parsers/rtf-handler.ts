@@ -183,8 +183,10 @@ export class RTFHandler {
 		let body: string;
 		if (isPlainText) {
 			body = this.encodeTextForRTF(content);
-		} else {
+		} else if (content.formattedText && content.formattedText.length > 0) {
 			body = this.buildFormattedRTF(content.formattedText);
+		} else {
+			body = this.encodeTextForRTF(content.plainText);
 		}
 
 		return `${header}${body}}`;
