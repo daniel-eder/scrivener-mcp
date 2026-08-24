@@ -10,6 +10,7 @@ import { getLogger } from '../../core/logger.js';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { pathToFileURL } from 'url';
 import chalk from 'chalk';
 import { readJSON, writeJSON } from '../../utils/common.js';
 
@@ -225,6 +226,6 @@ export class AutoSetup {
 }
 
 // CLI execution
-if (require.main === module) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
 	AutoSetup.cli(process.argv.slice(2));
 }
