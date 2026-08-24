@@ -4,6 +4,7 @@
  */
 
 import { generateScrivenerUUID } from './scrivener-utils.js';
+import { toScrivenerDateString } from './scrivx-serializer.js';
 import { createError, ErrorCode } from '../core/errors.js';
 import { getLogger } from '../core/logger.js';
 import type { LogContext } from '../core/logger.js';
@@ -15,12 +16,50 @@ interface BinderItem {
 	Title?: string;
 	Created?: string;
 	Modified?: string;
-	Children?: BinderItem[];
+	Children?: ChildrenContainer;
 	MetaData?: Record<string, unknown>;
+}
+
+/**
+ * Matches the on-disk .scrivx model: children live in a container element
+ * (e.g. `<Children><BinderItem .../></Children>`), not a flat array.
+ */
+interface ChildrenContainer {
+	BinderItem?: BinderItem | BinderItem[];
 }
 
 interface BinderContainer {
 	BinderItem?: BinderItem | BinderItem[];
+}
+
+/**
+ * Normalize an item's Children container to a flat array of binder items.
+ */
+function getChildrenArray(item: BinderItem): BinderItem[] {
+	const container = item.Children as ChildrenContainer | undefined;
+	if (!container || typeof container !== 'object') {
+		return [];
+	}
+	if (Array.isArray(container.BinderItem)) {
+		return container.BinderItem;
+	}
+	return container.BinderItem ? [container.BinderItem] : [];
+}
+
+/**
+ * Append a child to an item's Children container, creating it if needed.
+ */
+function appendChild(item: BinderItem, child: BinderItem): void {
+	if (!item.Children || typeof item.Children !== 'object' || Array.isArray(item.Children)) {
+		item.Children = {};
+	}
+	const container = item.Children as ChildrenContainer;
+	if (!container.BinderItem) {
+		container.BinderItem = [];
+	} else if (!Array.isArray(container.BinderItem)) {
+		container.BinderItem = [container.BinderItem];
+	}
+	(container.BinderItem as BinderItem[]).push(child);
 }
 
 const logger = getLogger('document-operations');
@@ -127,25 +166,24 @@ export async function createDocument(
 			}
 
 			// Create the binder item
+			const now = toScrivenerDateString();
 			const newItem: BinderItem = {
 				UUID: id,
 				Type: type,
 				Title: options.title,
-				Created: new Date().toISOString(),
-				Modified: new Date().toISOString(),
-				Children: type === 'Folder' ? [] : undefined,
+				Created: now,
+				Modified: now,
+				Children: type === 'Folder' ? {} : undefined,
 			};
 
-			// Add metadata if provided
-			if (options.metadata) {
-				const metadataWithDefaults = {
-					...options.metadata,
-					IncludeInCompile: 'Yes',
-					NotesTextSelection: [0, 0],
-					StatusID: options.metadata.status || 'N/A',
-				};
-				newItem.MetaData = metadataWithDefaults as Record<string, unknown>;
-			}
+			// Scrivener expects IncludeInCompile on every binder item; user
+			// metadata keys are stored alongside it.
+			newItem.MetaData = {
+				IncludeInCompile: 'Yes',
+				...(options.metadata?.synopsis ? { Synopsis: options.metadata.synopsis } : {}),
+				...(options.metadata?.label ? { Label: options.metadata.label } : {}),
+				...(options.metadata?.status ? { Status: options.metadata.status } : {}),
+			} as Record<string, unknown>;
 
 			// Find parent and add item
 			let parentPath: string[] = [];
@@ -158,7 +196,7 @@ export async function createDocument(
 						`Parent folder not found: ${options.parentId}`
 					);
 				}
-				if (parent.item.Type !== 'Folder') {
+				if (parent.item.Type !== 'Folder' && parent.item.Type !== 'DraftFolder') {
 					throw createError(
 						ErrorCode.INVALID_REQUEST,
 						undefined,
@@ -167,21 +205,18 @@ export async function createDocument(
 				}
 
 				// Add to parent's children
-				if (!parent.item.Children) {
-					parent.item.Children = [];
-				}
-				parent.item.Children.push(newItem);
+				appendChild(parent.item, newItem);
 				parentPath = parent.path;
 			} else {
 				// Add to root draft folder by default
 				const draftFolder = Array.isArray(binder.BinderItem)
 					? binder.BinderItem[0]
 					: binder.BinderItem;
-				if (draftFolder && draftFolder.Type === 'Folder') {
-					if (!draftFolder.Children) {
-						draftFolder.Children = [];
-					}
-					draftFolder.Children.push(newItem);
+				if (
+					draftFolder &&
+					(draftFolder.Type === 'Folder' || draftFolder.Type === 'DraftFolder')
+				) {
+					appendChild(draftFolder, newItem);
 					parentPath = [draftFolder.Title || 'Draft'];
 				} else {
 					// Fallback: add to root
@@ -195,11 +230,11 @@ export async function createDocument(
 			}
 
 			// Update modified timestamp on parent
-			const now = new Date().toISOString();
+			const parentModified = toScrivenerDateString();
 			if (options.parentId) {
 				const parent = findBinderItem(binder, options.parentId);
 				if (parent.item) {
-					parent.item.Modified = now;
+					parent.item.Modified = parentModified;
 				}
 			}
 
@@ -247,25 +282,23 @@ export async function createDocuments(
 				}
 
 				// Create the binder item
+				const now = toScrivenerDateString();
 				const newItem: BinderItem = {
 					UUID: id,
 					Type: type,
 					Title: doc.title,
-					Created: new Date().toISOString(),
-					Modified: new Date().toISOString(),
-					Children: type === 'Folder' ? [] : undefined,
+					Created: now,
+					Modified: now,
+					Children: type === 'Folder' ? {} : undefined,
 				};
 
-				// Add metadata if provided
-				if (doc.metadata) {
-					const metadataWithDefaults = {
-						...doc.metadata,
-						IncludeInCompile: 'Yes',
-						NotesTextSelection: [0, 0],
-						StatusID: doc.metadata.status || 'N/A',
-					};
-					newItem.MetaData = metadataWithDefaults as Record<string, unknown>;
-				}
+				// Scrivener expects IncludeInCompile on every binder item
+				newItem.MetaData = {
+					IncludeInCompile: 'Yes',
+					...(doc.metadata?.synopsis ? { Synopsis: doc.metadata.synopsis } : {}),
+					...(doc.metadata?.label ? { Label: doc.metadata.label } : {}),
+					...(doc.metadata?.status ? { Status: doc.metadata.status } : {}),
+				} as Record<string, unknown>;
 
 				// Find parent and add item
 				let parentPath: string[] = [];
@@ -278,7 +311,7 @@ export async function createDocuments(
 							`Parent folder not found: ${doc.parentId}`
 						);
 					}
-					if (parent.item.Type !== 'Folder') {
+					if (parent.item.Type !== 'Folder' && parent.item.Type !== 'DraftFolder') {
 						throw createError(
 							ErrorCode.INVALID_REQUEST,
 							undefined,
@@ -287,21 +320,18 @@ export async function createDocuments(
 					}
 
 					// Add to parent's children
-					if (!parent.item.Children) {
-						parent.item.Children = [];
-					}
-					parent.item.Children.push(newItem);
+					appendChild(parent.item, newItem);
 					parentPath = parent.path;
 				} else {
 					// Add to root draft folder by default
 					const draftFolder = Array.isArray(binder.BinderItem)
 						? binder.BinderItem[0]
 						: binder.BinderItem;
-					if (draftFolder && draftFolder.Type === 'Folder') {
-						if (!draftFolder.Children) {
-							draftFolder.Children = [];
-						}
-						draftFolder.Children.push(newItem);
+					if (
+						draftFolder &&
+						(draftFolder.Type === 'Folder' || draftFolder.Type === 'DraftFolder')
+					) {
+						appendChild(draftFolder, newItem);
 						parentPath = [draftFolder.Title || 'Draft'];
 					} else {
 						// Fallback: add to root
@@ -345,8 +375,9 @@ function findBinderItem(
 			if (item.UUID === id) {
 				return { item, path: currentPath };
 			}
-			if (item.Children) {
-				const found = searchItems(item.Children, [...currentPath, item.Title || '']);
+			const children = getChildrenArray(item);
+			if (children.length > 0) {
+				const found = searchItems(children, [...currentPath, item.Title || '']);
 				if (found.item) {
 					return found;
 				}
@@ -413,8 +444,8 @@ export async function moveDocument(
 						items.splice(i, 1);
 						return true;
 					}
-					const children = items[i].Children;
-					if (children && removeFromParent(children)) {
+					const children = getChildrenArray(items[i]);
+					if (children.length > 0 && removeFromParent(children)) {
 						return true;
 					}
 				}
@@ -426,13 +457,10 @@ export async function moveDocument(
 			}
 
 			// Add to target parent
-			if (!targetResult.item.Children) {
-				targetResult.item.Children = [];
-			}
-			targetResult.item.Children.push(docResult.item);
+			appendChild(targetResult.item, docResult.item);
 
 			// Update timestamps
-			const now = new Date().toISOString();
+			const now = toScrivenerDateString();
 			docResult.item.Modified = now;
 			targetResult.item.Modified = now;
 
@@ -474,9 +502,9 @@ export async function deleteDocument(
 							UUID: generateScrivenerUUID(),
 							Type: 'Folder',
 							Title: 'Trash',
-							Created: new Date().toISOString(),
-							Modified: new Date().toISOString(),
-							Children: [],
+							Created: toScrivenerDateString(),
+							Modified: toScrivenerDateString(),
+							Children: {},
 						};
 						binder.BinderItem.push(trashFolder);
 					}
@@ -495,8 +523,8 @@ export async function deleteDocument(
 							items.splice(i, 1);
 							return true;
 						}
-						const children = items[i].Children;
-						if (children && removeFromItems(children)) {
+						const children = getChildrenArray(items[i]);
+						if (children.length > 0 && removeFromItems(children)) {
 							return true;
 						}
 					}

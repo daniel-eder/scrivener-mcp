@@ -18,6 +18,7 @@ import {
 } from '../utils/common.js';
 import { FileUtils } from '../utils/shared-patterns.js';
 import { findScrivxPath, getDefaultScrivxPath } from '../utils/scrivener-utils.js';
+import { toScrivenerXmlModel } from '../utils/scrivx-serializer.js';
 
 const logger = getLogger('project-loader');
 
@@ -133,16 +134,20 @@ export class ProjectLoader {
 			await this.createBackup();
 		}
 
-		// Clean structure for saving (remove internal properties)
+		// Clean structure for saving (remove internal properties), then restore
+		// the attribute-aware shape xml2js Builder needs for valid .scrivx output.
 		const cleanStructure = this.cleanForSaving(projectToSave);
+		const scrivModel = toScrivenerXmlModel(cleanStructure);
 
 		const builder = new Builder({
 			xmldec: { version: '1.0', encoding: 'UTF-8' },
 			renderOpts: { pretty: true, indent: '    ' },
+			attrkey: '$',
+			charkey: '_',
 		});
 
 		try {
-			const xml = builder.buildObject(cleanStructure);
+			const xml = builder.buildObject(scrivModel);
 			// Guard against writing empty or truncated XML over a valid project file.
 			if (!xml || !xml.trimStart().startsWith('<?xml')) {
 				throw createError(

@@ -10,7 +10,7 @@ import { getLogger } from './core/logger.js';
 import { initializeAsyncServices, shutdownAsyncServices } from './handlers/async-handlers.js';
 import { DatabaseService } from './handlers/database/index.js';
 import { ContextSyncService, type SyncStatus } from './sync/context-sync.js';
-import { CleanupManager, safeReadFile, safeWriteFile } from './utils/common.js';
+import { CleanupManager, safeReadFile, safeWriteFile, withTimeout } from './utils/common.js';
 import { ensureProjectDataDirectory } from './utils/project-utils.js';
 import { findBinderItem, getDocumentPath } from './utils/scrivener-utils.js';
 
@@ -1452,22 +1452,36 @@ export class ScrivenerProject {
 	async close(): Promise<void> {
 		logger.info('Closing Scrivener project');
 
+		// Every teardown step is bounded so a wedged subsystem (e.g. queue
+		// connections without a running Redis) can never block project close.
+		const step = async (label: string, task: () => unknown | Promise<unknown>) => {
+			try {
+				await withTimeout(
+					Promise.resolve(task()).then(() => undefined),
+					10000,
+					label
+				);
+			} catch (error) {
+				logger.warn(`Project close step failed: ${label}`, { error });
+			}
+		};
+
 		// Flush any pending changes in the indexer
 		if (this.indexInitialized) {
-			await documentIndexer.flushChanges();
-			documentIndexer.dispose();
+			await step('indexer.flushChanges', () => documentIndexer.flushChanges());
+			await step('indexer.dispose', () => documentIndexer.dispose());
 			this.indexInitialized = false;
 		}
 
 		if (this.contextSync) {
-			this.contextSync.close();
+			await step('contextSync.close', () => this.contextSync?.close());
 		}
 
 		// Shutdown async services (job queue, AI services)
-		await shutdownAsyncServices();
+		await step('asyncServices.shutdown', () => shutdownAsyncServices());
 
-		await this.databaseService.close();
-		await this.documentManager.close();
+		await step('databaseService.close', () => this.databaseService.close());
+		await step('documentManager.close', () => this.documentManager.close());
 
 		logger.info('Project closed');
 	}

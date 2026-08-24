@@ -322,8 +322,9 @@ describe('ScrivenerProject', () => {
 			mockDatabaseService.close = jest.fn().mockRejectedValue(new Error('DB close failed'));
 			mockDocumentManager.close = jest.fn().mockResolvedValue(undefined);
 
-			// The close method lets errors propagate
-			await expect(project.close()).rejects.toThrow('DB close failed');
+			// Teardown failures are contained so project close always completes
+			await expect(project.close()).resolves.toBeUndefined();
+			expect(mockDocumentManager.close).toHaveBeenCalled();
 		});
 	});
 

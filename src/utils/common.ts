@@ -498,6 +498,28 @@ export const toSlug = (s: string): string =>
 // Async Utilities
 // ============================================================================
 
+/**
+ * Reject if the given promise does not settle within `ms` milliseconds.
+ * The underlying promise is not cancelled, but the caller stops waiting.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number, label = 'operation'): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(() => {
+			reject(new Error(`${label} timed out after ${ms}ms`));
+		}, ms);
+		promise.then(
+			(value) => {
+				clearTimeout(timer);
+				resolve(value);
+			},
+			(error) => {
+				clearTimeout(timer);
+				reject(error instanceof Error ? error : new Error(String(error)));
+			}
+		);
+	});
+}
+
 export async function retry<T>(
 	fn: () => Promise<T>,
 	{

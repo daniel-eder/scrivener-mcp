@@ -10,6 +10,7 @@ import { ContentAnalyzer } from '../../analysis/base-analyzer.js';
 import { createError, ErrorCode } from '../../core/errors.js';
 import { getLogger } from '../../core/logger.js';
 import { getQueueStatePath } from '../../utils/project-utils.js';
+import { withTimeout } from '../../utils/common.js';
 import { DatabaseService } from '../../handlers/database/database-service.js';
 import { getEnvConfig } from '../../utils/env-config.js';
 import { getDocumentPath } from '../../utils/scrivener-utils.js';
@@ -980,35 +981,51 @@ export class JobQueueService {
 	}
 
 	/**
-	 * Shutdown gracefully
+	 * Shutdown gracefully.
+	 *
+	 * Each teardown step is bounded by a timeout: BullMQ workers/queues hold
+	 * blocking connections that may never settle when the backing connection is
+	 * an embedded MemoryRedis (no real Redis available) or has gone away. Without
+	 * bounds, project close could hang indefinitely.
 	 */
 	async shutdown(): Promise<void> {
 		this.logger.info('Shutting down job queue service');
 
+		const closeBounded = async (label: string, task: () => Promise<unknown>) => {
+			try {
+				await withTimeout(
+					task().catch(() => undefined),
+					5000,
+					label
+				);
+			} catch {
+				this.logger.warn(`Timeout during shutdown: ${label}`);
+			}
+		};
+
 		// Close workers first
 		for (const [type, worker] of this.workers.entries()) {
-			await worker.close();
-			this.logger.debug(`Worker ${type} closed`);
+			await closeBounded(`worker:${type}`, () => worker.close());
 		}
 
 		// Close event listeners
 		for (const [type, events] of this.events.entries()) {
-			await events.close();
-			this.logger.debug(`Events ${type} closed`);
+			await closeBounded(`events:${type}`, () => events.close());
 		}
 
 		// Close queues
 		for (const [type, queue] of this.queues.entries()) {
-			await queue.close();
-			this.logger.debug(`Queue ${type} closed`);
+			await closeBounded(`queue:${type}`, () => queue.close());
 		}
 
 		// Close connection
 		if (this.connection) {
 			if (this.connectionType === 'embedded' && this.memoryRedis) {
-				await this.memoryRedis.disconnect();
-			} else if (this.connection.quit) {
-				await this.connection.quit();
+				await closeBounded('memory-redis:disconnect', () => this.memoryRedis!.disconnect());
+			} else if (typeof (this.connection as { quit?: unknown }).quit === 'function') {
+				await closeBounded('connection:quit', () =>
+					(this.connection as { quit: () => Promise<unknown> }).quit()
+				);
 			}
 		}
 
@@ -1017,6 +1034,8 @@ export class JobQueueService {
 		this.workers.clear();
 		this.events.clear();
 		this.embeddedJobs.clear();
+		this.connection = undefined;
+		this.memoryRedis = undefined;
 
 		this.isInitialized = false;
 		this.logger.info('Job queue service shutdown complete');
